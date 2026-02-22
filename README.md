@@ -2,7 +2,7 @@
 
 PayCheck-Guard是一个去中心化的工程款与劳务薪资托管平台，专为解决政企项目中“结算不透明”和“恶意欠薪”痛点而设计。
 
-本项目是 OneBlock+ Polkadot 2.0 Hackathon (2025) Track 3 的参赛作品，利用 Polkadot Revive 的 100% 以太坊兼容性实现高性能、低成本的链上资金监管。
+本项目是 OneBlock+ Polkadot 2.0 Hackathon  Track 3 的参赛作品，利用 Polkadot Revive 的 100% 以太坊兼容性实现高性能、低成本的链上资金监管。
 
 ## 📖 项目概述
 核心背景
