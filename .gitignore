@@ -1,0 +1,22 @@
+# 依赖包
+node_modules/
+.pnpm-store/
+
+# Next.js 编译产物
+.next/
+out/
+
+# Hardhat 编译产物
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# 环境文件（包含私钥，绝对不能上传！）
+.env
+.env.local
+.env.auth
+
+# 系统文件
+.DS_Store
+Thumbs.db
