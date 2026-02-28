@@ -17,7 +17,7 @@ const config: HardhatUserConfig = {
   },
   networks: {
     // 定义 Polkadot Hub TestNet
-    polkadotHub: {
+    polkadotHubTestnet: {
       url: "https://services.polkadothub-rpc.com/testnet/",
       chainId: 420420417,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
@@ -26,7 +26,7 @@ const config: HardhatUserConfig = {
   // 用于在 Blockscout 上验证合约（可选）
   etherscan: {
     apiKey: {
-      polkadotHub: "no-api-key-needed"
+      polkadotHubTestnet: "no-api-key-needed"
     },
     customChains: [
       {
