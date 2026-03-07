@@ -28,7 +28,6 @@ function CountdownTimer({
     const timer = setInterval(() => {
       const now = BigInt(Math.floor(Date.now() / 1000));
       const diff = deadline - now;
-
       if (diff <= 0n) {
         setTimeLeft("已到期");
         onEnd();
@@ -42,7 +41,7 @@ function CountdownTimer({
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [deadline]);
+  }, [deadline, onEnd]);
 
   return (
     <span style={{ color: "#f44336", fontWeight: "bold" }}>{timeLeft}</span>
@@ -61,7 +60,6 @@ function ProjectCard({
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [inputText, setInputText] = useState("");
   const [evidences, setEvidences] = useState<any[]>([]);
-
   const publicClient = usePublicClient();
 
   const { data: project, refetch } = useReadContract({
@@ -109,7 +107,7 @@ function ProjectCard({
       refetch();
       setInputText("");
     }
-  }, [isSuccess]);
+  }, [isSuccess, refetch]);
 
   if (
     !project ||
@@ -126,56 +124,22 @@ function ProjectCard({
     deadline,
     status,
   ] = project as any;
-
   const userAddr = address?.toLowerCase();
   const clientAddr = client.toLowerCase();
   const contractorAddr = contractor.toLowerCase();
 
   if (viewType === "我发布的项目" && clientAddr !== userAddr) return null;
-
   if (viewType === "我接收的项目") {
     if (contractorAddr !== userAddr) return null;
     if (status === 2 || status === 3) return null;
   }
-
   if (viewType === "退款/申诉") {
     const isRelated = clientAddr === userAddr || contractorAddr === userAddr;
     if (!isRelated || (status !== 2 && status !== 3)) return null;
   }
-
-  if (viewType === "管理员仲裁") {
-    if (status !== 2 && status !== 3) return null;
-  }
+  if (viewType === "管理员仲裁" && status !== 2 && status !== 3) return null;
 
   const isExpired = BigInt(Math.floor(Date.now() / 1000)) >= deadline;
-
-  const renderEvItem = (ev: any, i: number) => (
-    <div
-      key={i}
-      style={{
-        backgroundColor: "#fff",
-        padding: "8px",
-        borderRadius: "8px",
-        marginBottom: "8px",
-        fontSize: "12px",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-      }}
-    >
-      <div style={{ color: "#999", fontSize: "10px" }}>
-        {new Date(Number(ev[2]) * 1000).toLocaleString()}
-      </div>
-      <div style={{ marginTop: "4px", wordBreak: "break-all" }}>
-        {ev[1].startsWith("http") ? (
-          <img
-            src={ev[1]}
-            style={{ maxWidth: "100%", borderRadius: "4px", marginTop: "5px" }}
-          />
-        ) : (
-          ev[1]
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <div
@@ -203,10 +167,9 @@ function ProjectCard({
           {STATUS_MAP[status]}
         </span>
       </div>
-
       <div style={{ marginTop: "12px", fontSize: "13px", color: "#666" }}>
         预算: <b style={{ color: "#0070f3" }}>{formatEther(totalBudget)} DOT</b>{" "}
-        |
+        |{" "}
         {status === 0 ? (
           <>
             {" "}
@@ -246,7 +209,6 @@ function ProjectCard({
               {requirements}
             </div>
           </div>
-
           <div
             style={{
               display: "grid",
@@ -273,7 +235,9 @@ function ProjectCard({
               </p>
               {evidences
                 .filter((e) => e[0].toLowerCase() === clientAddr)
-                .map(renderEvItem)}
+                .map((ev, i) => (
+                  <EvidenceItem key={i} ev={ev} />
+                ))}
             </div>
             <div
               style={{
@@ -294,10 +258,11 @@ function ProjectCard({
               </p>
               {evidences
                 .filter((e) => e[0].toLowerCase() === contractorAddr)
-                .map(renderEvItem)}
+                .map((ev, i) => (
+                  <EvidenceItem key={i} ev={ev} />
+                ))}
             </div>
           </div>
-
           {(status === 0 || status === 2 || status === 3) && (
             <div
               style={{ display: "flex", gap: "10px", marginTop: "15px" }}
@@ -351,7 +316,6 @@ function ProjectCard({
             ⏰ 到期自动结算
           </button>
         )}
-
         {userAddr === clientAddr && status === 0 && (
           <>
             <button
@@ -382,13 +346,39 @@ function ProjectCard({
             </button>
           </>
         )}
-
         {userAddr === contractorAddr && status === 2 && (
-          <span style={{ fontSize: "12px", color: "#ff9800" }}>
-            甲方已申请退款，请及时补充存证反驳
-          </span>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <span style={{ fontSize: "12px", color: "#ff9800" }}>
+              甲方申请退款中:
+            </span>
+            <button
+              onClick={() =>
+                writeContract({
+                  address: CONTRACT_ADDRESS as `0x${string}`,
+                  abi: CONTRACT_ABI,
+                  functionName: "acceptRefund",
+                  args: [BigInt(projectId)],
+                })
+              }
+              style={btnStyle("#4caf50", false)}
+            >
+              ✅ 同意退款
+            </button>
+            <button
+              onClick={() =>
+                writeContract({
+                  address: CONTRACT_ADDRESS as `0x${string}`,
+                  abi: CONTRACT_ABI,
+                  functionName: "disputeRefund",
+                  args: [BigInt(projectId)],
+                })
+              }
+              style={btnStyle("#f44336", true)}
+            >
+              ❌ 拒绝并申诉
+            </button>
+          </div>
         )}
-
         {viewType === "管理员仲裁" && (status === 2 || status === 3) && (
           <>
             <button
@@ -402,7 +392,7 @@ function ProjectCard({
               }
               style={btnStyle("#f44336", true)}
             >
-              判定给甲方(退款)
+              判定给甲方
             </button>
             <button
               onClick={() =>
@@ -415,7 +405,7 @@ function ProjectCard({
               }
               style={btnStyle("#4CAF50", true)}
             >
-              判定给乙方(结算)
+              判定给乙方
             </button>
           </>
         )}
@@ -424,9 +414,38 @@ function ProjectCard({
   );
 }
 
+function EvidenceItem({ ev }: { ev: any }) {
+  return (
+    <div
+      style={{
+        backgroundColor: "#fff",
+        padding: "8px",
+        borderRadius: "8px",
+        marginBottom: "8px",
+        fontSize: "12px",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+      }}
+    >
+      <div style={{ color: "#999", fontSize: "10px" }}>
+        {new Date(Number(ev[2]) * 1000).toLocaleString()}
+      </div>
+      <div style={{ marginTop: "4px", wordBreak: "break-all" }}>
+        {ev[1].startsWith("http") ? (
+          <img
+            src={ev[1]}
+            style={{ maxWidth: "100%", borderRadius: "4px", marginTop: "5px" }}
+          />
+        ) : (
+          ev[1]
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- 主页面 ---
 export default function Home() {
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState("首页");
   const [form, setForm] = useState({
     title: "",
@@ -436,24 +455,47 @@ export default function Home() {
     d: "0",
     h: "0",
     m: "0",
-    s: "0", // 增加秒字段
+    s: "0",
   });
 
-  const { writeContract, isPending } = useWriteContract();
-  const { data: nextProjectId } = useReadContract({
+  // 1. 获取创建交易的 Hash
+  const { writeContract, data: createHash, isPending } = useWriteContract();
+
+  // 2. 获取 nextProjectId 及其刷新函数
+  const { data: nextProjectId, refetch: refetchNextId } = useReadContract({
     address: CONTRACT_ADDRESS as `0x${string}`,
     abi: CONTRACT_ABI,
     functionName: "nextProjectId",
   });
 
-  const handleCreate = () => {
-    // 更新计算逻辑，包含分钟和秒
-    const duration =
-      BigInt(form.d) * 86400n + 
-      BigInt(form.h) * 3600n + 
-      BigInt(form.m) * 60n + 
-      BigInt(form.s);
+  // 3. 核心：监听交易确认状态
+  const { isSuccess: isCreateSuccess } = useWaitForTransactionReceipt({
+    hash: createHash,
+  });
 
+  // 4. 交易确认后自动刷新 ID 并重置表单
+  useEffect(() => {
+    if (isCreateSuccess) {
+      refetchNextId();
+      setForm({
+        title: "",
+        contractor: "",
+        amount: "",
+        reqs: "",
+        d: "0",
+        h: "0",
+        m: "0",
+        s: "0",
+      });
+    }
+  }, [isCreateSuccess, refetchNextId]);
+
+  const handleCreate = () => {
+    const duration =
+      BigInt(form.d) * 86400n +
+      BigInt(form.h) * 3600n +
+      BigInt(form.m) * 60n +
+      BigInt(form.s);
     writeContract({
       address: CONTRACT_ADDRESS as `0x${string}`,
       abi: CONTRACT_ABI,
@@ -478,7 +520,7 @@ export default function Home() {
             gap: "10px",
           }}
         >
-          🛡️ <span style={{ fontSize: "20px" }}>PayCheck-Guard</span>
+          🛡️ PayCheck-Guard
         </h2>
         <div style={{ display: "flex", gap: "10px" }}>
           {[
@@ -528,16 +570,19 @@ export default function Home() {
                 <h3 style={{ marginTop: 0 }}>📝 发布新工程任务</h3>
                 <input
                   placeholder="工程标题"
+                  value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   style={inputStyle}
                 />
                 <textarea
                   placeholder="详细工程要求"
+                  value={form.reqs}
                   onChange={(e) => setForm({ ...form, reqs: e.target.value })}
                   style={{ ...inputStyle, height: "100px", resize: "none" }}
                 />
                 <input
                   placeholder="乙方钱包地址"
+                  value={form.contractor}
                   onChange={(e) =>
                     setForm({ ...form, contractor: e.target.value })
                   }
@@ -546,6 +591,7 @@ export default function Home() {
                 <input
                   type="number"
                   placeholder="托管金额 (DOT)"
+                  value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
                   style={inputStyle}
                 />
@@ -563,38 +609,32 @@ export default function Home() {
                   <span style={{ fontSize: "14px", fontWeight: "bold" }}>
                     周期:
                   </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                    <input
-                      type="number"
-                      value={form.d}
-                      onChange={(e) => setForm({ ...form, d: e.target.value })}
-                      style={{ ...inputStyle, width: "55px", padding: "8px" }}
-                    /> 天
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                    <input
-                      type="number"
-                      value={form.h}
-                      onChange={(e) => setForm({ ...form, h: e.target.value })}
-                      style={{ ...inputStyle, width: "55px", padding: "8px" }}
-                    /> 时
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                    <input
-                      type="number"
-                      value={form.m}
-                      onChange={(e) => setForm({ ...form, m: e.target.value })}
-                      style={{ ...inputStyle, width: "55px", padding: "8px" }}
-                    /> 分
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                    <input
-                      type="number"
-                      value={form.s}
-                      onChange={(e) => setForm({ ...form, s: e.target.value })}
-                      style={{ ...inputStyle, width: "55px", padding: "8px" }}
-                    /> 秒
-                  </div>
+                  {["d", "h", "m", "s"].map((unit) => (
+                    <div
+                      key={unit}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
+                      }}
+                    >
+                      <input
+                        type="number"
+                        value={(form as any)[unit]}
+                        onChange={(e) =>
+                          setForm({ ...form, [unit]: e.target.value })
+                        }
+                        style={{ ...inputStyle, width: "55px", padding: "8px" }}
+                      />{" "}
+                      {unit === "d"
+                        ? "天"
+                        : unit === "h"
+                          ? "时"
+                          : unit === "m"
+                            ? "分"
+                            : "秒"}
+                    </div>
+                  ))}
                 </div>
                 <button
                   onClick={handleCreate}
@@ -612,13 +652,17 @@ export default function Home() {
               <div style={{ display: "grid", gap: "20px" }}>
                 {nextProjectId !== undefined &&
                   Array.from({ length: Number(nextProjectId as bigint) }).map(
-                    (_, i) => (
-                      <ProjectCard
-                        key={i}
-                        projectId={Number(nextProjectId as bigint) - 1 - i}
-                        viewType={activeTab}
-                      />
-                    ),
+                    (_, i) => {
+                      const id = Number(nextProjectId as bigint) - 1 - i;
+                      // 使用 activeTab + id 作为 key，确保切换标签时列表强制刷新
+                      return (
+                        <ProjectCard
+                          key={`${activeTab}-${id}`}
+                          projectId={id}
+                          viewType={activeTab}
+                        />
+                      );
+                    },
                   )}
                 {Number(nextProjectId || 0) === 0 && (
                   <div
@@ -652,7 +696,7 @@ export default function Home() {
   );
 }
 
-// 样式定义保持不变...
+// 样式定义
 const navStyle: any = {
   display: "flex",
   justifyContent: "space-between",

@@ -6,17 +6,16 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract PayCheckGuard is ReentrancyGuard, Ownable {
     enum Status {
-        Active,
-        Paid,
-        RefundRequested,
-        Disputed,
-        Closed
+        Active, // 0: 进行中
+        Paid, // 1: 已结算（乙方拿钱）
+        RefundRequested, // 2: 甲方申请退款中
+        Disputed, // 3: 乙方已反驳，仲裁中
+        Closed // 4: 已关闭（退款给甲方）
     }
 
-    // 新增：证据结构体体，支持多媒体链接和时间戳
     struct Evidence {
         address submitter;
-        string content; // 存储文本、图片URL或IPFS哈希
+        string content;
         uint256 timestamp;
     }
 
@@ -24,11 +23,11 @@ contract PayCheckGuard is ReentrancyGuard, Ownable {
         address client;
         address contractor;
         uint256 totalBudget;
-        string title; // 1. 工程标题
-        string requirements; // 1. 工程要求
-        uint256 deadline; // 1. 自动支付截止时间戳
+        string title;
+        string requirements;
+        uint256 deadline;
         Status status;
-        Evidence[] evidenceFlow; // 2. 存证流：记录甲乙双方多次提交的理由
+        Evidence[] evidenceFlow;
     }
 
     mapping(uint256 => Project) public projects;
@@ -36,7 +35,7 @@ contract PayCheckGuard is ReentrancyGuard, Ownable {
 
     constructor() Ownable(msg.sender) {}
 
-    // 1. 发布工程：新增标题、要求和周期（秒）
+    // 1. 发布工程
     function createProject(
         address _contractor,
         string memory _title,
@@ -44,6 +43,7 @@ contract PayCheckGuard is ReentrancyGuard, Ownable {
         uint256 _durationSeconds
     ) external payable {
         require(msg.value > 0, "Amount must > 0");
+        require(_contractor != address(0), "Invalid contractor address");
 
         uint256 projectId = nextProjectId++;
         Project storage p = projects[projectId];
@@ -52,11 +52,11 @@ contract PayCheckGuard is ReentrancyGuard, Ownable {
         p.totalBudget = msg.value;
         p.title = _title;
         p.requirements = _requirements;
-        p.deadline = block.timestamp + _durationSeconds; // 设置倒计时终点
+        p.deadline = block.timestamp + _durationSeconds;
         p.status = Status.Active;
     }
 
-    // 2. 提交理由/证明：甲乙双方均可多次提交，按时间戳排序
+    // 2. 提交存证材料
     function addEvidence(uint256 _projectId, string memory _content) external {
         Project storage p = projects[_projectId];
         require(
@@ -65,7 +65,7 @@ contract PayCheckGuard is ReentrancyGuard, Ownable {
         );
         require(
             p.status != Status.Paid && p.status != Status.Closed,
-            "Project closed"
+            "Project already finalized"
         );
 
         p.evidenceFlow.push(
@@ -77,77 +77,126 @@ contract PayCheckGuard is ReentrancyGuard, Ownable {
         );
     }
 
-    // 3. 自动结算触发：时间一到，任何人可调用此函数将钱转给乙方
+    // 3. 自动结算逻辑 (到期后任何人可触发)
     function triggerAutoPay(uint256 _projectId) external nonReentrant {
         Project storage p = projects[_projectId];
-        require(p.status == Status.Active, "Status not Active");
+        require(p.status == Status.Active, "Project not in Active status");
         require(block.timestamp >= p.deadline, "Deadline not reached yet");
 
         uint256 amount = p.totalBudget;
+        require(amount > 0, "No funds");
+
         p.totalBudget = 0;
         p.status = Status.Paid;
-        payable(p.contractor).transfer(amount);
+
+        (bool success, ) = payable(p.contractor).call{value: amount}("");
+        require(success, "Transfer failed");
     }
 
-    // 4. 甲方手动验收（提前结算）
+    // 4. 甲方手动验收结算
     function releaseFunds(uint256 _projectId) external nonReentrant {
         Project storage p = projects[_projectId];
         require(msg.sender == p.client, "Only client");
-        require(p.status == Status.Active, "Status must be Active");
+        require(
+            p.status == Status.Active || p.status == Status.RefundRequested,
+            "Invalid status"
+        );
 
         uint256 amount = p.totalBudget;
+        require(amount > 0, "No funds");
+
         p.totalBudget = 0;
         p.status = Status.Paid;
-        payable(p.contractor).transfer(amount);
+
+        (bool success, ) = payable(p.contractor).call{value: amount}("");
+        require(success, "Transfer failed");
     }
 
-    // 5. 甲方申请退款（会冻结自动支付计时逻辑，进入争议流程）
+    // 5. 甲方发起退款申请
     function requestRefund(uint256 _projectId) external {
         Project storage p = projects[_projectId];
         require(msg.sender == p.client, "Only client");
-        require(p.status == Status.Active, "Status must be Active");
+        require(p.status == Status.Active, "Can only request from Active");
+
         p.status = Status.RefundRequested;
     }
 
-    // 6. 乙方拒绝退款
+    // --- 新增/修改的核心逻辑 ---
+
+    // 6. 乙方拒绝退款并申诉 (进入仲裁中状态)
     function disputeRefund(uint256 _projectId) external {
         Project storage p = projects[_projectId];
         require(msg.sender == p.contractor, "Only contractor");
-        require(p.status == Status.RefundRequested, "No refund requested");
-        p.status = Status.Disputed;
+        require(
+            p.status == Status.RefundRequested,
+            "No refund requested to dispute"
+        );
+
+        p.status = Status.Disputed; // 变为 3 (仲裁中)
     }
 
-    // 7. 管理员仲裁
+    // 7. 乙方同意退款 (主动认输，资金退回甲方)
+    function acceptRefund(uint256 _projectId) external nonReentrant {
+        Project storage p = projects[_projectId];
+        require(msg.sender == p.contractor, "Only contractor");
+        require(
+            p.status == Status.RefundRequested || p.status == Status.Disputed,
+            "Invalid status"
+        );
+
+        uint256 amount = p.totalBudget;
+        require(amount > 0, "No funds");
+
+        p.totalBudget = 0;
+        p.status = Status.Closed; // 变为 4 (已关闭/已退款)
+
+        (bool success, ) = payable(p.client).call{value: amount}("");
+        require(success, "Refund failed");
+    }
+
+    // 8. 管理员仲裁
     function arbitrate(
         uint256 _projectId,
         bool _refundToClient
     ) external onlyOwner nonReentrant {
         Project storage p = projects[_projectId];
-        require(p.status == Status.Disputed, "Not in dispute");
+        require(
+            p.status == Status.RefundRequested || p.status == Status.Disputed,
+            "Not in a state for arbitration"
+        );
 
         uint256 amount = p.totalBudget;
+        require(amount > 0, "No funds");
+
         p.totalBudget = 0;
-        p.status = Status.Closed;
 
         if (_refundToClient) {
-            payable(p.client).transfer(amount);
+            p.status = Status.Closed;
+            (bool success, ) = payable(p.client).call{value: amount}("");
+            require(success, "Refund failed");
         } else {
-            payable(p.contractor).transfer(amount);
+            p.status = Status.Paid;
+            (bool success, ) = payable(p.contractor).call{value: amount}("");
+            require(success, "Payment failed");
         }
     }
 
-    // 辅助函数：前端获取证据流数量
+    // --- 视图辅助函数 ---
+
     function getEvidenceCount(
         uint256 _projectId
     ) external view returns (uint256) {
         return projects[_projectId].evidenceFlow.length;
     }
 
-    // 辅助函数：获取特定索引的证据内容
     function getEvidence(
         uint256 _projectId,
         uint256 _index
-    ) external view returns (address, string memory, uint256) {
+    )
+        external
+        view
+        returns (address submitter, string memory content, uint256 timestamp)
+    {
         Evidence storage e = projects[_projectId].evidenceFlow[_index];
         return (e.submitter, e.content, e.timestamp);
     }
