@@ -1,9 +1,12 @@
+@import "tailwindcss";
+
+/* 保持基础背景色，防止页面加载瞬间闪烁白光 */
 html,
 body {
   padding: 0;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
-    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  background-color: #020617; /* 对应 Tailwind 的 bg-slate-950 */
+  color: #e2e8f0;            /* 对应 Tailwind 的 text-slate-200 */
 }
 
 a {
@@ -11,6 +14,16 @@ a {
   text-decoration: none;
 }
 
+/* 这里的设置确保所有元素都遵循现代盒模型 */
 * {
   box-sizing: border-box;
+}
+
+/* 隐藏滚动条但保留滚动功能（可选，增加科技感） */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
