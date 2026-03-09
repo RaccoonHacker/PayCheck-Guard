@@ -23,7 +23,7 @@ PayCheck-Guard是一个去中心化的工程款与劳务薪资托管平台，专
 ## ⚙️核心功能
 1. ✅ 项目资金托管 (Project Escrow): 甲方发布项目并注入 DOT/USDT。
 2. ✅ 垂直转账 (Vertical Payment): 预设转账地址，确保薪资直接转入企业和工人。
-3. ✅ 公开解锁 (Public Verification): 配合工作量证明（PoW）实现自动化拨付。
+3. ✅ 公开解锁 (Public Verification): 配合工作证明实现自动化拨付。
 4. ✅ 透明面板 (Transparency Dashboard): 实时查看链上资金余额与锁定状态。
 ## 🛠 技术架构
 
