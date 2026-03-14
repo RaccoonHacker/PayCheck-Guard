@@ -76,7 +76,7 @@ Open http://localhost:3000
 
 ppt链接：https://drive.google.com/file/d/1FnQz4Q3q5ItH4E8tq48Hicc9IIpI3JXQ/view?usp=drive_link
 
-Live Demo: pay-check-guard.vercel.app
+Live Demo: https://pay-check-guard.vercel.app
 
 ![](/images/first%20page.png)
 ![](/images/second%20page.png)
